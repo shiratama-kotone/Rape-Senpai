@@ -52,10 +52,10 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
     let mode = getMode();
     let soundMode = getSoundMode();
 
-    // --- オートモード用の変数 ---
+    // --- オートモード用の内部変数 ---
     let _autoMode = false;
     let _autoPlayInterval = null;
-    let _autoSpeedCPS = 20; // デフォルトは秒速20回タップ
+    let _autoSpeedCPS = 20; // デフォルト設定（1秒間に20回タップ）
 
     w.init = function() {
         showWelcomeLayer();
@@ -76,7 +76,7 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
             GameLayerBG.onmousedown = gameTapEvent;
         }
         gameInit();
-        injectAutoModeDOM(); // オートモード用UIを設定画面に注入
+        injectAutoModeDOM(); // 指定されたHTML構造に合わせて設定項目を注入
         initSetting();
         window.addEventListener('resize', refreshSize, false);
     }
@@ -256,7 +256,7 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
         _gameOver = true;
         clearInterval(_gameTime);
         
-        // ゲームオーバー時は自動プレイタイマーを停止
+        // ゲームオーバー時は自動タップをクリア
         if (_autoPlayInterval) {
             clearInterval(_autoPlayInterval);
             _autoPlayInterval = null;
@@ -394,7 +394,7 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
         $('#welcome').css('display', 'none');
         updatePanel();
         
-        // ゲーム画面に入った時、オートモードがONなら自動プレイを開始
+        // ゲーム開始時、オートモード設定がONであれば自動タップを開始
         if (_autoMode) {
             startAutoPlayLoop();
         }
@@ -504,23 +504,32 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
 
     document.write(createGameLayer());
 
-    // --- オートモード用設定UIをHTMLに動的追加 ---
+    // --- オートモード用設定UIをHTML（#setting）へ動的に追加注入 ---
     function injectAutoModeDOM() {
         const target = $('#setting');
         if (target.length === 0) return;
 
+        // 提供されたHTML内の「OK-I18N」ボタンを特定
+        const okButton = target.find('button[data-i18n="ok"]');
+
         const autoHTML = `
-            <div style="border-top:1px solid #ccc; margin-top:15px; padding-top:10px;">
-                <label style="display:block; margin-bottom:5px; font-weight:bold;">Auto Play Settings</label>
-                <button type="button" class="btn btn-secondary btn-block" id="autoModeBtn" onclick="window.toggleAutoModeSettings()" style="margin-bottom:10px;">オートモード: OFF</button>
-                <div class="input-group" style="margin-bottom:10px;">
-                    <span class="input-group-addon">秒速 (CPS)</span>
-                    <input type="number" id="autoSpeed" class="form-control" placeholder="例: 20" value="20">
+            <div class="input-group mb-3" style="border-top: 1px dashed #bbb; padding-top: 15px;">
+                <button type="button" class="btn btn-secondary w-100 mb-3" id="autoModeBtn" onclick="window.toggleAutoModeSettings()">オートモード: OFF</button>
+            </div>
+            <div class="input-group mb-3">
+                <div class="input-group-prepend col-3">
+                    <span class="input-group-text" style="font-size: 0.8em; padding: 10px 5px;">秒速 (CPS)</span>
                 </div>
+                <input type="number" id="autoSpeed" class="form-control" placeholder="例: 20" value="20">
             </div>
         `;
-        // 設定を保存ボタン（.btn-success）の手前に挿入
-        target.find('.btn-success').before(autoHTML);
+
+        // OKボタンの手前にオートモードの設定UI要素を差し込む
+        if (okButton.length > 0) {
+            okButton.before(autoHTML);
+        } else {
+            target.append(autoHTML);
+        }
     }
 
     function initSetting() {
@@ -550,7 +559,7 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
             gameRestart();
         }
 
-        // --- オートモードCookieの読み込み ---
+        // --- クッキーからオートモード設定を読み込み ---
         let savedAutoMode = cookie('autoMode');
         _autoMode = (savedAutoMode === 'true' || savedAutoMode === true);
         updateAutoModeButtonUI();
@@ -576,6 +585,7 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
     }
 
     w.save_cookie = function() {
+        // HTML上の各入力項目の値を集計してCookieへ保存（新設した autoSpeed も連動）
         const settings = ['keyboard', 'gameTime', 'autoSpeed'];
         for (let s of settings) {
             let value=$(`#${s}`).val();
@@ -583,7 +593,7 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
                 cookie(s, value.toString(), 100);
             }
         }
-        // オートモードのON/OFF状態も保存
+        // オートモードの有効/無効フラグをCookieに保存
         cookie('autoMode', _autoMode.toString(), 100);
 
         initSetting();
@@ -615,13 +625,13 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
         gameTapEvent(fakeEvent);
     }
 
-    // --- オートプレイ無限ループ処理 ---
+    // --- 設定されたCPSに基づいた自動ループ処理 ---
     function startAutoPlayLoop() {
         if (_autoPlayInterval) clearInterval(_autoPlayInterval);
         
-        // 秒速 (CPS) からミリ秒間隔を計算 (例: 20CPS = 1000 / 20 = 50ms 間隔)
+        // 秒速から発火間隔のミリ秒を逆算（1000ms / CPS）
         let intervalMs = 1000 / _autoSpeedCPS;
-        if (intervalMs < 4) intervalMs = 4; // ブラウザ制限の最小値ガード
+        if (intervalMs < 4) intervalMs = 4; // ブラウザ規定の最小限界値ガード
 
         _autoPlayInterval = setInterval(function() {
             if (!welcomeLayerClosed || _gameOver) return;
@@ -633,14 +643,17 @@ const MODE_NORMAL = 1, MODE_ENDLESS = 2, MODE_PRACTICE = 3;
         }, intervalMs);
     }
 
-    // 設定画面内のボタンから呼ばれる切り替え関数
+    // 設定画面内のボタン配下から起動されるトグル関数
     w.toggleAutoModeSettings = function() {
         _autoMode = !_autoMode;
         updateAutoModeButtonUI();
     }
 
+    // ON/OFF状態に応じたボタン装飾の変更処理
     function updateAutoModeButtonUI() {
         const btn = $('#autoModeBtn');
+        if (btn.length === 0) return;
+
         if (_autoMode) {
             btn.text("オートモード: ON").removeClass('btn-secondary').addClass('btn-primary');
         } else {
